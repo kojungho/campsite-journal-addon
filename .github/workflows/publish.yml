@@ -23,6 +23,7 @@ jobs:
       - run: node --check campsite_journal/static/app.js
       - run: node --check campsite_journal/static/connect.js
       - run: node --check campsite_journal/static/stay-picker.js
+      - run: node tests/test_stay_picker.cjs
   build:
     needs: test
     strategy:
