@@ -47,3 +47,5 @@ body{font-size:var(--list-font)}h1{font-size:calc(var(--list-font)*1.43)}h2{font
 
 #prefs[open]{display:flex;flex-direction:column;height:min(900px,92dvh);padding:0;overflow:hidden}#prefs>.dialog-head{flex:0 0 auto;padding:18px 24px;margin:0;border-bottom:1px solid var(--border);background:#fbfcf8}#prefs>.dialog-head>button{flex-shrink:0}#prefsBody{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;padding:20px 24px;-webkit-overflow-scrolling:touch}#prefsActions{flex:0 0 auto;margin:0;padding:14px 24px max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--border);background:#fbfcf8}#prefsActions>a{margin-right:auto}
 @media(max-width:700px){#prefs>.dialog-head{padding:14px 16px}#prefsBody{padding:16px}#prefsActions{padding:12px 16px max(12px,env(safe-area-inset-bottom));gap:7px}#prefsActions>a,#prefsActions>button{font-size:max(8px,calc(var(--list-font)*.88));padding:9px 10px}}
+
+.address-actions{display:flex;align-items:stretch;gap:8px;flex-wrap:nowrap}.address-actions>button{flex:1;min-width:0;white-space:nowrap;padding:9px 8px}
