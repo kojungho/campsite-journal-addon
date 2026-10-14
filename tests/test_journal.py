@@ -85,6 +85,17 @@ class JournalTest(unittest.TestCase):
   previous_client=json.loads(json.dumps(DEFAULTS));previous_client.pop('platforms');self.assertEqual(self.client.put('/api/settings',json=previous_client,headers=self.headers).status_code,200)
   self.assertIn('새 예약 플랫폼',self.client.get('/api/state').json['settings']['platforms'])
   s['platforms'].append('캠핏');self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,400)
+ def test_platform_delete_order_concurrency_and_restore(self):
+  ident=self.record(platform='캠핏');settings=self.client.get('/api/state').json['settings']
+  concurrent=json.loads(json.dumps(settings));concurrent['platforms'].append('동시 추가');self.assertEqual(self.client.put('/api/settings',json=concurrent,headers=self.headers).status_code,200)
+  settings['platforms']=['캠핑톡','네이버','땡큐캠핑','홈페이지'];settings['platform_order']=settings['platforms'][:];settings['platform_remove']=['캠핏']
+  self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
+  state=self.client.get('/api/state').json;self.assertEqual(state['settings']['platforms'],['캠핑톡','네이버','땡큐캠핑','홈페이지','동시 추가']);self.assertEqual(state['records'][0]['platform'],'캠핏')
+  old=json.loads(json.dumps(DEFAULTS));self.assertEqual(self.client.put('/api/settings',json=old,headers=self.headers).status_code,200);self.assertNotIn('캠핏',self.client.get('/api/state').json['settings']['platforms'])
+  restored=self.client.get('/api/state').json['settings'];restored['platforms'].append('캠핏');restored['platform_add']=['캠핏'];restored['platform_order']=restored['platforms'][:]
+  self.assertEqual(self.client.put('/api/settings',json=restored,headers=self.headers).status_code,200);self.assertIn('캠핏',self.client.get('/api/state').json['settings']['platforms'])
+  empty=self.client.get('/api/state').json['settings'];empty['platform_remove']=empty['platforms'][:];empty['platforms']=[];empty['platform_order']=[]
+  self.assertEqual(self.client.put('/api/settings',json=empty,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['platforms'],[]);self.assertEqual(self.client.get('/api/state').json['records'][0]['id'],ident)
  def test_backup_excludes_pairing_keys(self):
   self.record();r=self.client.get('/api/backup');self.assertEqual(r.status_code,200)
   with zipfile.ZipFile(io.BytesIO(r.data)) as z:

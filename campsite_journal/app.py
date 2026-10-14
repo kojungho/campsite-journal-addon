@@ -201,12 +201,23 @@ def settings():
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
   c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])
-  if not isinstance(platforms,list) or not 1<=len(platforms)<=200 or any(not isinstance(p,str) or not p.strip() or len(p)>80 for p in platforms):raise ValueError('예약 플랫폼은 1~200개, 이름은 1~80자로 입력해주세요.')
+  if not isinstance(platforms,list) or not 0<=len(platforms)<=200 or any(not isinstance(p,str) or not p.strip() or len(p)>80 for p in platforms):raise ValueError('예약 플랫폼은 최대 200개, 이름은 1~80자로 입력해주세요.')
   platforms=[p.strip() for p in platforms]
   if len({p.casefold() for p in platforms})!=len(platforms):raise ValueError('중복된 예약 플랫폼 이름을 확인해주세요.')
+  operations={}
+  for key in ('platform_remove','platform_add'):
+   values=raw.get(key,[])
+   if not isinstance(values,list) or len(values)>200 or any(not isinstance(p,str) or not p.strip() or len(p)>80 for p in values):raise ValueError('예약 플랫폼 변경 항목을 확인해주세요.')
+   operations[key]={p.strip().casefold() for p in values}
+  deleted=set(s.get('platform_deleted',[]));deleted.update(operations['platform_remove']);deleted.difference_update(operations['platform_add'])
+  requested_order=raw.get('platform_order')
+  if requested_order is not None:
+   if not isinstance(requested_order,list) or any(not isinstance(p,str) for p in requested_order) or len(requested_order)!=len(platforms) or {p.casefold() for p in requested_order}!={p.casefold() for p in platforms}:raise ValueError('예약 플랫폼 순서를 확인해주세요.')
+   sequence=[*requested_order,*s['platforms']]
+  else:sequence=[*s['platforms'],*platforms]
   merged=[];seen=set()
-  for p in [*s['platforms'],*platforms]:
-   if p.casefold() not in seen:seen.add(p.casefold());merged.append(p)
+  for p in sequence:
+   if p.casefold() not in seen and p.casefold() not in deleted:seen.add(p.casefold());merged.append(p)
   if len(merged)>200:raise ValueError('예약 플랫폼은 최대 200개까지 등록할 수 있습니다.')
   detail_order=raw.get('detail_order',s['detail_order'])
   if not isinstance(detail_order,list) or len(detail_order)!=len(DETAIL_FIELDS) or any(not isinstance(k,str) for k in detail_order) or set(detail_order)!=set(DETAIL_FIELDS):raise ValueError('상세 항목 순서를 확인해주세요.')
@@ -215,7 +226,7 @@ def settings():
   if not isinstance(kakao_key,str) or (kakao_key and (len(kakao_key)!=32 or any(ch not in '0123456789abcdefABCDEF' for ch in kakao_key))):raise ValueError('카카오 JavaScript 키를 확인해주세요.')
   scroll_top=raw.get('scroll_top',s['scroll_top'])
   if scroll_top not in [side+'-'+pos for side in ('left','right') for pos in ('top','middle','bottom')]:raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
-  s.update(detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  s.update(platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():
