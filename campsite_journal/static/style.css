@@ -13,3 +13,5 @@ body{font-size:var(--list-font)}h1{font-size:calc(var(--list-font)*1.43)}h2{font
 #campsiteFindForm{display:flex;align-items:flex-end;gap:10px}#campsiteFindForm label{flex:1}#campsiteFindResults{display:grid;gap:8px;max-height:45dvh;overflow:auto}.address-result span{color:#53694b;margin-top:6px}.manual-campsite{margin-top:18px;padding:14px;border:1px solid var(--border);border-radius:10px}.manual-campsite button,.manual-campsite a{margin:6px 5px 0 0}.find-campsite-button{padding:7px;font-size:12px;width:fit-content;margin-top:2px}.link-icon{max-width:100%}
 
 .sort-heading{background:transparent;border:0;padding:0;text-align:left;justify-content:flex-start;color:inherit;font-size:inherit;font-weight:inherit;width:100%;border-radius:3px}.sort-heading:hover{background:transparent;color:#234e43}td .mini-gallery img{cursor:zoom-in}
+
+.platform-settings{margin-bottom:24px;padding-bottom:15px;border-bottom:1px solid var(--border)}.platform-add{display:flex;gap:8px}.platform-add input{flex:1}.platform-add button{white-space:nowrap}#platformList{line-height:1.9;color:#49663f}

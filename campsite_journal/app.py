@@ -16,7 +16,8 @@ DATA=Path(os.getenv('JOURNAL_DATA','./.local-data'));DATA.mkdir(parents=True,exi
 MEDIA=DATA/'photos';MEDIA.mkdir(exist_ok=True)
 FIELDS=['platform','booking_url','name','location','map_url','site','price','checkin','checkout','photos','layout','notes']
 LABELS=['예약 플랫폼','예약 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','사진','배치도','메모']
-DEFAULTS={'order':FIELDS,'visible':{k:k!='notes' for k in FIELDS},'desktop':{'widths':{k:140 for k in FIELDS},'font':14,'padding':10},'mobile':{'widths':{k:100 for k in FIELDS},'font':12,'padding':6},'external':{},'picker':'files'}
+DEFAULT_PLATFORMS=['홈페이지','캠핏','땡큐캠핑','네이버','캠핑톡']
+DEFAULTS={'platforms':DEFAULT_PLATFORMS,'order':FIELDS,'visible':{k:k!='notes' for k in FIELDS},'desktop':{'widths':{k:140 for k in FIELDS},'font':14,'padding':10},'mobile':{'widths':{k:100 for k in FIELDS},'font':12,'padding':6},'external':{},'picker':'files'}
 # Device config uses mobile key; display settings use display_mobile to keep schemas separate.
 DEFAULTS['display_mobile']=DEFAULTS.pop('mobile')
 app=Flask(__name__);app.config['MAX_CONTENT_LENGTH']=64*1024*1024
@@ -29,7 +30,8 @@ def connection():
 with connection() as c:
  c.executescript('CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,body TEXT NOT NULL);CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,kind TEXT NOT NULL,name TEXT NOT NULL);CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,body TEXT NOT NULL);')
  c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULTS),))
-def get_settings(c):return json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0])
+def get_settings(c):
+ s=json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]);s.setdefault('platforms',list(DEFAULT_PLATFORMS));return s
 mobile=install_mobile(app,connection,get_settings,DATA)
 @app.before_request
 def guard():
@@ -169,7 +171,15 @@ def settings():
   display[key]={'font':font,'padding':padding,'widths':widths}
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
-  s=get_settings(c);s.update(order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])
+  if not isinstance(platforms,list) or not 1<=len(platforms)<=200 or any(not isinstance(p,str) or not p.strip() or len(p)>80 for p in platforms):raise ValueError('예약 플랫폼은 1~200개, 이름은 1~80자로 입력해주세요.')
+  platforms=[p.strip() for p in platforms]
+  if len({p.casefold() for p in platforms})!=len(platforms):raise ValueError('중복된 예약 플랫폼 이름을 확인해주세요.')
+  merged=[];seen=set()
+  for p in [*s['platforms'],*platforms]:
+   if p.casefold() not in seen:seen.add(p.casefold());merged.append(p)
+  if len(merged)>200:raise ValueError('예약 플랫폼은 최대 200개까지 등록할 수 있습니다.')
+  s.update(platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():

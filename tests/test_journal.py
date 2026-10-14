@@ -49,6 +49,12 @@ class JournalTest(unittest.TestCase):
   self.assertEqual(ext.post('/api/mobile/devices',json={'name':'evil'},headers=auth,environ_overrides=outside).status_code,403)
   self.client.post('/api/mobile/devices/'+pair['id']+'/revoke',json={},headers=self.headers)
   self.assertEqual(ext.get('/api/state',headers=auth,environ_overrides=outside).status_code,401)
+ def test_platform_defaults_addition_and_old_client_preservation(self):
+  s=self.client.get('/api/state').json['settings'];self.assertEqual(s['platforms'],['홈페이지','캠핏','땡큐캠핑','네이버','캠핑톡'])
+  s['platforms'].append('새 예약 플랫폼');self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,200)
+  previous_client=json.loads(json.dumps(DEFAULTS));previous_client.pop('platforms');self.assertEqual(self.client.put('/api/settings',json=previous_client,headers=self.headers).status_code,200)
+  self.assertIn('새 예약 플랫폼',self.client.get('/api/state').json['settings']['platforms'])
+  s['platforms'].append('캠핏');self.assertEqual(self.client.put('/api/settings',json=s,headers=self.headers).status_code,400)
  def test_backup_excludes_pairing_keys(self):
   self.record();r=self.client.get('/api/backup');self.assertEqual(r.status_code,200)
   with zipfile.ZipFile(io.BytesIO(r.data)) as z:
