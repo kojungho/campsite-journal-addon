@@ -1,5 +1,5 @@
 name: 캠핑장 기록
-version: "1.0.5"
+version: "1.0.6"
 slug: campsite_journal
 description: 방문한 캠핑장, 예약, 지도, 숙박기간과 사진 갤러리
 arch: [aarch64, amd64]

@@ -9,6 +9,7 @@ from pillow_heif import register_heif_opener
 register_heif_opener()
 from mobile_access import install_mobile,channel_app
 from address_search import search as search_address
+from campsite_search import search as search_campsites
 
 DATA=Path(os.getenv('JOURNAL_DATA','./.local-data'));DATA.mkdir(parents=True,exist_ok=True)
 MEDIA=DATA/'photos';MEDIA.mkdir(exist_ok=True)
@@ -78,6 +79,11 @@ def clean(raw):
    b[k]=v
  if (b['lat'] is None)!=(b['lng'] is None):raise ValueError('위도와 경도를 함께 입력해주세요.')
  return b
+@app.get('/api/campsites')
+def campsites():
+ body,status=search_campsites(request.args.get('q',''))
+ return jsonify(body),status
+
 @app.get('/api/addresses')
 def addresses():
  body,status=search_address(request.args.get('q',''))

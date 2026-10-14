@@ -24,6 +24,7 @@ jobs:
       - run: node --check campsite_journal/static/connect.js
       - run: node --check campsite_journal/static/stay-picker.js
       - run: node --check campsite_journal/static/free-address.js
+      - run: node --check campsite_journal/static/campsite-finder.js
       - run: node tests/test_stay_picker.cjs
   build:
     needs: test
