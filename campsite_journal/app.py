@@ -14,8 +14,8 @@ import live_sync
 
 DATA=Path(os.getenv('JOURNAL_DATA','./.local-data'));DATA.mkdir(parents=True,exist_ok=True)
 MEDIA=DATA/'photos';MEDIA.mkdir(exist_ok=True)
-FIELDS=['platform','booking_url','name','location','map_url','site','price','checkin','checkout','photos','layout','notes']
-LABELS=['예약 플랫폼','캠핑장 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','사진','배치도','메모']
+FIELDS=['platform','booking_url','name','location','map_url','site','price','checkin','checkout','nights','photos','layout','notes']
+LABELS=['예약 플랫폼','캠핑장 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','기간','사진','배치도','메모']
 DETAIL_FIELDS=['name','location','platform','booking_url','site','price','stay','map_url','notes','map','photos','layout']
 DEFAULT_PLATFORMS=['홈페이지','캠핏','땡큐캠핑','네이버','캠핑톡']
 DEFAULTS={'platforms':DEFAULT_PLATFORMS,'order':FIELDS,'visible':{k:k!='notes' for k in FIELDS},'desktop':{'widths':{k:140 for k in FIELDS},'font':14,'padding':10},'mobile':{'widths':{k:100 for k in FIELDS},'font':12,'padding':6},'external':{},'picker':'files'}
@@ -32,8 +32,16 @@ with connection() as c:
  c.executescript('CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,body TEXT NOT NULL);CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,kind TEXT NOT NULL,name TEXT NOT NULL);CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,body TEXT NOT NULL);')
  if 'memo' not in [r['name'] for r in c.execute('PRAGMA table_info(photos)')]:c.execute("ALTER TABLE photos ADD COLUMN memo TEXT NOT NULL DEFAULT ''")
  c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULTS),))
+def upgrade_columns(settings):
+ order=settings.get('order',[])
+ if isinstance(order,list) and len(order)==len(FIELDS)-1 and all(isinstance(k,str) for k in order) and set(order)==set(FIELDS)-{'nights'}:
+  settings['order']=[*order[:order.index('checkout')+1],'nights',*order[order.index('checkout')+1:]]
+  settings.setdefault('visible',{}).setdefault('nights',settings['visible'].get('checkout',True))
+  for mode in ('desktop','display_mobile'):
+   widths=settings.setdefault(mode,{}).setdefault('widths',{});widths.setdefault('nights',widths.get('checkout',100))
+ return settings
 def get_settings(c):
- s=json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]);s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS))
+ s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS))
  for mode in ('desktop','display_mobile'):s[mode].setdefault('link_size',20)
  return s
 mobile=install_mobile(app,connection,get_settings,DATA)
@@ -63,7 +71,7 @@ def state():
   return jsonify(records=rows,settings=get_settings(c),admin=mobile['admin'](),version=os.getenv('JOURNAL_VERSION','1.0.0'))
 def clean(raw):
  if not isinstance(raw,dict):raise ValueError('기록 형식이 올바르지 않습니다.')
- b={k:raw.get(k,'') for k in FIELDS if k not in ('photos','layout')}
+ b={k:raw.get(k,'') for k in FIELDS if k not in ('photos','layout','nights')}
  for k,v in b.items():
   if not isinstance(v,(str,int,float)) or len(str(v))>10000:raise ValueError('입력값이 너무 길거나 올바르지 않습니다.')
   if k!='price':b[k]=str(v).strip()
@@ -184,6 +192,7 @@ def remove_photo(pid):
 def settings():
  raw=request.get_json()
  if not isinstance(raw,dict):raise ValueError('설정 형식이 올바르지 않습니다.')
+ raw=upgrade_columns(raw)
  order=raw.get('order',[])
  if len(order)!=len(FIELDS) or set(order)!=set(FIELDS):raise ValueError('항목 순서를 확인해주세요.')
  visible=raw.get('visible',{})

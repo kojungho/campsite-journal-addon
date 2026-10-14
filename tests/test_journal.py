@@ -58,6 +58,13 @@ class JournalTest(unittest.TestCase):
   settings['desktop']['link_size']=32;settings['detail_order'][0]=['invalid'];self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
   settings['detail_order']=original[:-1];self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
   saved.pop('detail_order');self.assertEqual(self.client.put('/api/settings',json=saved,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['detail_order'],list(reversed(original)))
+ def test_old_list_columns_upgrade_and_derived_nights(self):
+  old=json.loads(json.dumps(DEFAULTS));old['order'].remove('nights');old['visible'].pop('nights');old['visible']['price']=False
+  for mode in ('desktop','display_mobile'):old[mode]['widths'].pop('nights');old[mode]['widths']['checkout']=123
+  with connection() as c:c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(old),))
+  upgraded=self.client.get('/api/state').json['settings'];self.assertEqual(upgraded['order'].index('nights'),upgraded['order'].index('checkout')+1);self.assertEqual(upgraded['desktop']['widths']['nights'],123);self.assertFalse(upgraded['visible']['price'])
+  self.assertEqual(self.client.put('/api/settings',json=old,headers=self.headers).status_code,200)
+  ident=self.record(nights='999');record=self.client.get('/api/state').json['records'][0];self.assertEqual(record['id'],ident);self.assertNotIn('nights',record);self.assertEqual(record['checkout'],'2026-10-03')
  def test_atomic_bad_upload(self):
   ident=self.record();r=self.client.post('/api/records/'+ident+'/photos/gallery',data={'photos':(io.BytesIO(b'not image'),'bad.jpg')},headers=self.headers);self.assertEqual(r.status_code,400)
   self.assertEqual(self.client.get('/api/state').json['records'][0]['photos'],[])
