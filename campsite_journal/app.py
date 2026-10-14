@@ -49,7 +49,9 @@ def invalid(e):return jsonify(error=str(e)),400
 @app.errorhandler(413)
 def too_large(e):return jsonify(error='한 번에 64MB 이하로 첨부해주세요.'),413
 @app.get('/')
-def index():return app.send_static_file('index.html')
+def index():
+ html=(Path(app.static_folder)/'index.html').read_text().replace('__APP_VERSION__',os.getenv('JOURNAL_VERSION','1.0.0'))
+ return Response(html,mimetype='text/html')
 @app.get('/api/state')
 def state():
  with connection() as c:
