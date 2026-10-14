@@ -22,6 +22,7 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: node --check campsite_journal/static/app.js
       - run: node --check campsite_journal/static/connect.js
+      - run: node --check campsite_journal/static/stay-picker.js
   build:
     needs: test
     strategy:
