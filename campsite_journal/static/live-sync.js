@@ -1,7 +1,7 @@
 'use strict';
 (()=>{
  let pending=false,refreshing=false,timer,stream,currentRevision=null,currentVersion='';const loadedVersion=document.querySelector('meta[name=app-version]')?.content;let offeredVersion=null,updateAvailable=false;const updateDialog=document.createElement('dialog');updateDialog.innerHTML='<div class="dialog-head"><h2>새 화면 버전이 준비됐습니다</h2></div><p>업데이트하면 새로운 기능을 바로 사용할 수 있습니다. 저장한 기록과 기기 연결은 유지됩니다.</p><div class="actions"><button id="laterWebUpdate">나중에</button><button id="applyWebUpdate" class="primary">업데이트</button></div>';document.body.append(updateDialog);updateDialog.querySelector('#laterWebUpdate').onclick=()=>updateDialog.close();updateDialog.querySelector('#applyWebUpdate').onclick=()=>location.reload();
- const busy=()=>['editor','prefs','stayPicker','addressSearch','positionPicker','campsiteFinder'].some(id=>document.getElementById(id)?.open)||!!window.journalUploading;
+ const busy=()=>['zoom','editor','prefs','stayPicker','addressSearch','positionPicker','campsiteFinder','kakaoPositionPicker'].some(id=>document.getElementById(id)?.open)||!!window.journalUploading||!!window.journalMemoDirty;
  async function apply(){if(!pending||refreshing||busy())return;refreshing=true;pending=false;try{await reload();checkVersion(state.version)}catch{pending=true}finally{refreshing=false;offerUpdate();if(pending&&!busy())timer=setTimeout(apply,1500)}}
  function offerUpdate(){if(!updateAvailable||busy()||updateDialog.open)return;updateAvailable=false;updateDialog.showModal()}
  function checkVersion(version){if(loadedVersion&&loadedVersion!== '__APP_VERSION__'&&version!==loadedVersion&&version!==offeredVersion){offeredVersion=version;updateAvailable=true;offerUpdate()}}

@@ -15,7 +15,7 @@ import live_sync
 DATA=Path(os.getenv('JOURNAL_DATA','./.local-data'));DATA.mkdir(parents=True,exist_ok=True)
 MEDIA=DATA/'photos';MEDIA.mkdir(exist_ok=True)
 FIELDS=['platform','booking_url','name','location','map_url','site','price','checkin','checkout','photos','layout','notes']
-LABELS=['예약 플랫폼','예약 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','사진','배치도','메모']
+LABELS=['예약 플랫폼','캠핑장 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','사진','배치도','메모']
 DEFAULT_PLATFORMS=['홈페이지','캠핏','땡큐캠핑','네이버','캠핑톡']
 DEFAULTS={'platforms':DEFAULT_PLATFORMS,'order':FIELDS,'visible':{k:k!='notes' for k in FIELDS},'desktop':{'widths':{k:140 for k in FIELDS},'font':14,'padding':10},'mobile':{'widths':{k:100 for k in FIELDS},'font':12,'padding':6},'external':{},'picker':'files'}
 # Device config uses mobile key; display settings use display_mobile to keep schemas separate.
@@ -29,9 +29,10 @@ def connection():
  finally:c.close()
 with connection() as c:
  c.executescript('CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,body TEXT NOT NULL);CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,kind TEXT NOT NULL,name TEXT NOT NULL);CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,body TEXT NOT NULL);')
+ if 'memo' not in [r['name'] for r in c.execute('PRAGMA table_info(photos)')]:c.execute("ALTER TABLE photos ADD COLUMN memo TEXT NOT NULL DEFAULT ''")
  c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULTS),))
 def get_settings(c):
- s=json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]);s.setdefault('platforms',list(DEFAULT_PLATFORMS));return s
+ s=json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]);s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');return s
 mobile=install_mobile(app,connection,get_settings,DATA)
 @app.before_request
 def guard():
@@ -42,7 +43,7 @@ def guard():
 def headers(r):
  r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
  if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400:live_sync.publish()
- r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self' https://t1.kakaocdn.net https://t1.daumcdn.net; connect-src 'self'; frame-src https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
+ r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net; frame-src https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
 def invalid(e):return jsonify(error=str(e)),400
@@ -121,6 +122,20 @@ def delete(ident):
   if not c.execute('DELETE FROM records WHERE id=?',(ident,)).rowcount:abort(404)
  for name in names:(MEDIA/(name+'.jpg')).unlink(missing_ok=True)
  return jsonify(ok=True)
+@app.put('/api/records/<ident>/position')
+def resolve_position(ident):
+ raw=request.get_json()
+ if not isinstance(raw,dict) or not isinstance(raw.get('address'),str):raise ValueError('주소를 확인해주세요.')
+ checked=clean({'name':'지도 위치','lat':raw.get('lat'),'lng':raw.get('lng')})
+ if checked['lat'] is None:raise ValueError('지도 위치를 확인해주세요.')
+ with connection() as c:
+  c.execute('BEGIN IMMEDIATE');row=c.execute('SELECT body FROM records WHERE id=?',(ident,)).fetchone()
+  if row is None:abort(404)
+  body=json.loads(row['body'])
+  if body.get('location')!=raw['address']:return jsonify(error='주소가 변경되어 위치를 다시 찾아야 합니다.'),409
+  if body.get('lat') is None or body.get('lng') is None:
+   body.update(lat=checked['lat'],lng=checked['lng']);c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),ident))
+  return jsonify(lat=body['lat'],lng=body['lng'])
 @app.post('/api/records/<ident>/photos/<kind>')
 def upload(ident,kind):
  if kind not in ('gallery','layout'):abort(400)
@@ -139,7 +154,7 @@ def upload(ident,kind):
   with connection() as c:
    if not c.execute('SELECT 1 FROM records WHERE id=?',(ident,)).fetchone():abort(404)
    for pid,name,content in staged:
-    (MEDIA/(pid+'.jpg')).write_bytes(content);c.execute('INSERT INTO photos VALUES(?,?,?,?)',(pid,ident,kind,name))
+    (MEDIA/(pid+'.jpg')).write_bytes(content);c.execute('INSERT INTO photos(id,record_id,kind,name) VALUES(?,?,?,?)',(pid,ident,kind,name))
  except Exception:
   for pid,_,_ in staged:(MEDIA/(pid+'.jpg')).unlink(missing_ok=True)
   raise
@@ -149,6 +164,13 @@ def photo(pid):
  with connection() as c:
   if not c.execute('SELECT 1 FROM photos WHERE id=?',(pid,)).fetchone():abort(404)
  return send_file(MEDIA/(pid+'.jpg'),mimetype='image/jpeg')
+@app.put('/api/photos/<pid>')
+def photo_memo(pid):
+ raw=request.get_json()
+ if not isinstance(raw,dict) or not isinstance(raw.get('memo'),str) or len(raw['memo'])>2000:raise ValueError('사진 메모는 2000자 이하로 입력해주세요.')
+ with connection() as c:
+  if not c.execute('UPDATE photos SET memo=? WHERE id=?',(raw['memo'],pid)).rowcount:abort(404)
+ return jsonify(ok=True)
 @app.delete('/api/photos/<pid>')
 def remove_photo(pid):
  with connection() as c:
@@ -181,7 +203,12 @@ def settings():
   for p in [*s['platforms'],*platforms]:
    if p.casefold() not in seen:seen.add(p.casefold());merged.append(p)
   if len(merged)>200:raise ValueError('예약 플랫폼은 최대 200개까지 등록할 수 있습니다.')
-  s.update(platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  kakao_key=raw.get('kakao_key',s['kakao_key'])
+  if kakao_key!=s['kakao_key'] and not mobile['admin']():abort(403)
+  if not isinstance(kakao_key,str) or (kakao_key and (len(kakao_key)!=32 or any(ch not in '0123456789abcdefABCDEF' for ch in kakao_key))):raise ValueError('카카오 JavaScript 키를 확인해주세요.')
+  scroll_top=raw.get('scroll_top',s['scroll_top'])
+  if scroll_top not in [side+'-'+pos for side in ('left','right') for pos in ('top','middle','bottom')]:raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
+  s.update(kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():

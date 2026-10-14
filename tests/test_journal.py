@@ -28,6 +28,26 @@ class JournalTest(unittest.TestCase):
   self.assertEqual(self.client.delete('/api/photos/'+photo,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/photos/'+photo).status_code,404)
   self.client.delete('/api/records/'+ident,headers=self.headers)
   self.assertEqual(self.client.get('/api/state').json['records'],[])
+ def test_photo_memo_and_scroll_position(self):
+  ident=self.record();image=io.BytesIO();Image.new('RGB',(10,10),'blue').save(image,'PNG');image.seek(0)
+  self.client.post('/api/records/'+ident+'/photos/gallery',data={'photos':(image,'memo.png')},headers=self.headers)
+  photo=self.client.get('/api/state').json['records'][0]['photos'][0];self.assertEqual(photo['memo'],'')
+  self.assertEqual(self.client.put('/api/photos/'+photo['id'],json={'memo':'첫날의 캠핑\n노을'},headers=self.headers).status_code,200)
+  self.assertEqual(self.client.get('/api/state').json['records'][0]['photos'][0]['memo'],'첫날의 캠핑\n노을')
+  self.assertEqual(self.client.put('/api/photos/'+photo['id'],json={'memo':'x'*2001},headers=self.headers).status_code,400)
+  self.assertEqual(self.client.put('/api/photos/'+photo['id'],json={'memo':'bad'}).status_code,403)
+  self.assertEqual(self.client.put('/api/photos/missing',json={'memo':'x'},headers=self.headers).status_code,404)
+  settings=self.client.get('/api/state').json['settings']
+  for side in ('left','right'):
+   for pos in ('top','middle','bottom'):
+    settings['scroll_top']=side+'-'+pos;self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['scroll_top'],side+'-'+pos)
+  settings['scroll_top']='invalid';self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
+ def test_address_position_update_preserves_other_fields(self):
+  ident=self.record(notes='유지할 메모',booking_url='https://example.com')
+  self.assertEqual(self.client.put('/api/records/'+ident+'/position',json={'address':'다른 주소','lat':37,'lng':128},headers=self.headers).status_code,409)
+  self.assertEqual(self.client.put('/api/records/'+ident+'/position',json={'address':'강원도','lat':37,'lng':128},headers=self.headers).status_code,200)
+  self.client.put('/api/records/'+ident+'/position',json={'address':'강원도','lat':38,'lng':129},headers=self.headers)
+  record=self.client.get('/api/state').json['records'][0];self.assertEqual(record['lat'],37);self.assertEqual(record['notes'],'유지할 메모');self.assertEqual(record['booking_url'],'https://example.com')
  def test_atomic_bad_upload(self):
   ident=self.record();r=self.client.post('/api/records/'+ident+'/photos/gallery',data={'photos':(io.BytesIO(b'not image'),'bad.jpg')},headers=self.headers);self.assertEqual(r.status_code,400)
   self.assertEqual(self.client.get('/api/state').json['records'][0]['photos'],[])
