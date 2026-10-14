@@ -35,8 +35,8 @@ def guard():
  if request.method in ('POST','PUT','DELETE') and request.path!='/api/mobile/session' and request.headers.get('X-Camp-Request')!='1':abort(403)
 @app.after_request
 def headers(r):
- r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='no-referrer';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
- r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://nominatim.openstreetmap.org; frame-src https://www.openstreetmap.org; base-uri 'self'; form-action 'self'"
+ r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
+ r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://nominatim.openstreetmap.org; frame-src https://www.openstreetmap.org; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
 def invalid(e):return jsonify(error=str(e)),400
