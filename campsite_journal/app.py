@@ -81,6 +81,10 @@ def clean(raw):
    b[k]=v
  if (b['lat'] is None)!=(b['lng'] is None):raise ValueError('위도와 경도를 함께 입력해주세요.')
  return b
+@app.get('/api/live/status')
+def live_status():
+ return jsonify(revision=live_sync.revision,version=os.getenv('JOURNAL_VERSION','1.0.0'))
+
 @app.get('/api/live')
 def live():
  return Response(stream_with_context(live_sync.events()),mimetype='text/event-stream',headers={'X-Accel-Buffering':'no','Cache-Control':'no-cache'})
