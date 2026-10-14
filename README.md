@@ -16,8 +16,8 @@ Home Assistant OS / Supervisor 필요. GitHub Actions에서 테스트 후 amd64 
 - 목록 행을 눌러 상세정보 열기. 목록에서 숨긴 항목도 상세에는 유지.
 - 사진 갤러리와 배치도 갤러리. ＋를 눌러 여러 장 첨부. 사진 클릭 시 확대, 사진 안 ×로 삭제.
 - JPG, PNG, WebP, GIF, HEIC 지원. 방향 보정 후 최대 3200px JPG로 저장. 한 번에 64MB까지 첨부.
-- 위치로 좌표 검색 / 위도·경도 직접 입력. 상세 지도와 전체 방문 지도. 지도 링크를 붙여넣고 좌표도 등록해야 지도 핀이 표시됩니다.
-- 지도 및 위치 검색은 인터넷 연결 필요. 위치 검색 버튼을 누르면 입력한 이름·주소를 OpenStreetMap 검색 서비스에 전달합니다.
+- 네이버 주소 검색 / 위도·경도 직접 입력. 상세 지도와 전체 방문 지도. 지도 링크를 붙여넣고 좌표도 등록해야 지도 핀이 표시됩니다.
+- 지도 및 위치 검색은 인터넷 연결 필요. 위치 검색 버튼을 누르면 입력한 이름·주소를 네이버 Maps 검색 서비스에 전달합니다.
 - 설정: 항목 표시 ON/OFF, ☰ 핸들로 마우스·터치 드래그 순서 이동. 키보드 위/아래 방향키 지원.
 - PC / 모바일 별도 열 너비(최소 20px), 글자 크기(최소 8px), 셀 여백(최소 2px). 모바일 기준 700px.
 - 전체 기록·사진 ZIP 백업. 기기 연결키는 백업에서 제외.
@@ -73,3 +73,14 @@ JOURNAL_DATA=./.local-data JOURNAL_HOST=127.0.0.1 .venv/bin/python campsite_jour
 이미지 업데이트: config.yaml 버전을 올리고 main push → Actions 성공 → HA 스토어 업데이트 확인. 최초 GHCR 패키지는 Public인지 확인하세요.
 
 APK 빌드: SDK build-tools 36.1.0 / android-36, JDK 필요. `ANDROID_SDK_ROOT`, `CAMP_APK_BUILD_DIR`(소스 외부), `CAMP_APK_KEYSTORE`(소스 외부), `CAMP_APK_STOREPASS` 환경변수 설정 후 `android/build-apk.sh`. 기존 키를 유지해야 앱을 덮어써 업데이트할 수 있습니다.
+
+## 네이버 주소 검색 설정
+
+1. 네이버 클라우드 콘솔 → Services → Application Services → Maps → Application 등록에서 **Geocoding**을 선택합니다. 기존 AI·NAVER API의 지도 상품 대신 새로운 Maps 상품을 사용하세요.
+2. 인증정보에서 Client ID와 Client Secret을 확인합니다.
+3. HA → 설정 → 앱 → 캠핑장 기록 → 구성에서 `naver_client_id`, `naver_client_secret`에 입력 → 저장 → 앱 재시작.
+4. 기록 추가/수정 → **네이버 주소 검색** → 도로명주소 또는 지번주소 입력 → 검색 결과 선택 → 저장. 선택한 주소, 위도·경도, 비어 있는 네이버 지도 링크를 함께 입력합니다.
+
+API 키가 없으면 네이버 주소 검색을 사용할 수 없습니다. 주소는 직접 입력하여 저장할 수 있습니다. 기존 기록은 유지됩니다. 지도에 표시하려면 검색 결과로 좌표를 채우거나 선택 항목에서 직접 좌표를 입력하세요. 검색어는 네이버 Maps로 전송되며 Client Secret은 서버에서만 사용하고 브라우저·장부 백업에 포함하지 않습니다. API 이용량·요금·사용 한도는 네이버 콘솔에서 확인하세요.
+
+공식 안내: https://guide.ncloud-docs.com/docs/maps-app / https://api.ncloud-docs.com/docs/application-maps-geocoding
