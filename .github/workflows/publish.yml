@@ -26,6 +26,8 @@ jobs:
       - run: node tests/test_kakao_maps.cjs
       - run: node tests/test_web_updates.cjs
       - run: node tests/test_detail.cjs
+      - run: node --check campsite_journal/static/reorder.js
+      - run: node tests/test_reorder.cjs
       - run: node --check campsite_journal/static/app.js
       - run: node --check campsite_journal/static/connect.js
       - run: node --check campsite_journal/static/stay-picker.js

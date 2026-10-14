@@ -37,3 +37,5 @@ body{font-size:var(--list-font)}h1{font-size:calc(var(--list-font)*1.43)}h2{font
 @media(max-width:700px){.detail-content{gap:18px 20px}.stay-summary{padding:13px 14px}}
 
 .campsite-name-input input{padding-right:114px}.detail-map-wrap:not(.interactive) .map-frame *{pointer-events:none!important}
+
+.handle,.handle *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none}.handle{min-width:44px;min-height:44px;flex-shrink:0}.reordering,.reordering *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none}.reordering .handle{cursor:grabbing}.pref-row.dragging{z-index:3;pointer-events:none;opacity:.9;will-change:transform;outline:2px solid #648851}.pref-row.drop-before:before,.pref-row.drop-after:after{content:"";position:absolute;left:0;right:0;height:3px;border-radius:3px;background:#234e43;pointer-events:none}.pref-row.drop-before:before{top:-4px}.pref-row.drop-after:after{bottom:-4px}
