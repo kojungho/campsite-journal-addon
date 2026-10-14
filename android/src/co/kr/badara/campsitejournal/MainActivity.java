@@ -172,7 +172,7 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request!=10||chooser==null)return;ValueCallback<Uri[]> pending=chooser;chooser=null;Uri[] uris=selectedUris(result,data);if(uris==null||!chooserPhotos){pending.onReceiveValue(uris);return;}
         new Thread(()->{ArrayList<Uri> copied=new ArrayList<>();for(Uri uri:uris)try{copied.add(cachePhoto(uri));}catch(Exception ignored){}runOnUiThread(()->{if(copied.isEmpty()){pending.onReceiveValue(null);Toast.makeText(this,"선택한 사진을 읽지 못했습니다. 파일 앱으로 다시 선택해주세요.",Toast.LENGTH_LONG).show();}else pending.onReceiveValue(copied.toArray(new Uri[0]));});},"campsite-journal-photos").start();
     }
-    @Override protected void onResume(){super.onResume();if(updater!=null){updater.maybeInstall();updater.check();}}
+    @Override protected void onResume(){super.onResume();if(updater!=null){updater.resumed();}}
     @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}
     @Override protected void onDestroy(){if(web!=null)web.destroy();super.onDestroy();}
 }
