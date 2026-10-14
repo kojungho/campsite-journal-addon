@@ -23,6 +23,7 @@ jobs:
       - run: node --check campsite_journal/static/scroll-top.js
       - run: node --check campsite_journal/static/kakao-maps.js
       - run: node tests/test_scroll_top.cjs
+      - run: node tests/test_kakao_maps.cjs
       - run: node --check campsite_journal/static/app.js
       - run: node --check campsite_journal/static/connect.js
       - run: node --check campsite_journal/static/stay-picker.js
