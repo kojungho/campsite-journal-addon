@@ -27,3 +27,5 @@ body{font-size:var(--list-font)}h1{font-size:calc(var(--list-font)*1.43)}h2{font
 #detailBody{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;padding:20px 24px;-webkit-overflow-scrolling:touch}
 #detailActions{flex:0 0 auto;margin:0;padding:14px 24px max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--border);background:#fbfcf8}
 @media(max-width:700px){#detail>.dialog-head{padding:16px}#detailBody{padding:16px}#detailActions{padding:12px 16px max(12px,env(safe-area-inset-bottom))}}
+
+#table th,#table td{text-align:center}#table .sort-heading{text-align:center;justify-content:center}#table .mini-gallery{justify-content:center}
