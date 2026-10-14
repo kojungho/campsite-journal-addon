@@ -48,6 +48,16 @@ class JournalTest(unittest.TestCase):
   self.assertEqual(self.client.put('/api/records/'+ident+'/position',json={'address':'강원도','lat':37,'lng':128},headers=self.headers).status_code,200)
   self.client.put('/api/records/'+ident+'/position',json={'address':'강원도','lat':38,'lng':129},headers=self.headers)
   record=self.client.get('/api/state').json['records'][0];self.assertEqual(record['lat'],37);self.assertEqual(record['notes'],'유지할 메모');self.assertEqual(record['booking_url'],'https://example.com')
+ def test_detail_order_and_icon_size_settings(self):
+  settings=self.client.get('/api/state').json['settings'];original=settings['detail_order'][:]
+  self.assertEqual(settings['desktop']['link_size'],20)
+  settings['detail_order']=list(reversed(original));settings['desktop']['link_size']=32;settings['display_mobile']['link_size']=16
+  self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,200)
+  saved=self.client.get('/api/state').json['settings'];self.assertEqual(saved['detail_order'],list(reversed(original)));self.assertEqual(saved['desktop']['link_size'],32);self.assertEqual(saved['display_mobile']['link_size'],16)
+  settings['desktop']['link_size']=81;self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
+  settings['desktop']['link_size']=32;settings['detail_order'][0]=['invalid'];self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
+  settings['detail_order']=original[:-1];self.assertEqual(self.client.put('/api/settings',json=settings,headers=self.headers).status_code,400)
+  saved.pop('detail_order');self.assertEqual(self.client.put('/api/settings',json=saved,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/api/state').json['settings']['detail_order'],list(reversed(original)))
  def test_atomic_bad_upload(self):
   ident=self.record();r=self.client.post('/api/records/'+ident+'/photos/gallery',data={'photos':(io.BytesIO(b'not image'),'bad.jpg')},headers=self.headers);self.assertEqual(r.status_code,400)
   self.assertEqual(self.client.get('/api/state').json['records'][0]['photos'],[])

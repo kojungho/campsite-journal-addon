@@ -16,6 +16,7 @@ DATA=Path(os.getenv('JOURNAL_DATA','./.local-data'));DATA.mkdir(parents=True,exi
 MEDIA=DATA/'photos';MEDIA.mkdir(exist_ok=True)
 FIELDS=['platform','booking_url','name','location','map_url','site','price','checkin','checkout','photos','layout','notes']
 LABELS=['예약 플랫폼','캠핑장 링크','캠핑장명','위치','지도 링크','사이트명','가격','입실','퇴실','사진','배치도','메모']
+DETAIL_FIELDS=['name','location','platform','booking_url','site','price','stay','map_url','notes','map','photos','layout']
 DEFAULT_PLATFORMS=['홈페이지','캠핏','땡큐캠핑','네이버','캠핑톡']
 DEFAULTS={'platforms':DEFAULT_PLATFORMS,'order':FIELDS,'visible':{k:k!='notes' for k in FIELDS},'desktop':{'widths':{k:140 for k in FIELDS},'font':14,'padding':10},'mobile':{'widths':{k:100 for k in FIELDS},'font':12,'padding':6},'external':{},'picker':'files'}
 # Device config uses mobile key; display settings use display_mobile to keep schemas separate.
@@ -32,7 +33,9 @@ with connection() as c:
  if 'memo' not in [r['name'] for r in c.execute('PRAGMA table_info(photos)')]:c.execute("ALTER TABLE photos ADD COLUMN memo TEXT NOT NULL DEFAULT ''")
  c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULTS),))
 def get_settings(c):
- s=json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]);s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');return s
+ s=json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]);s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS))
+ for mode in ('desktop','display_mobile'):s[mode].setdefault('link_size',20)
+ return s
 mobile=install_mobile(app,connection,get_settings,DATA)
 @app.before_request
 def guard():
@@ -192,7 +195,9 @@ def settings():
    font=int(x['font']);padding=int(x['padding']);widths={k:int(x['widths'][k]) for k in FIELDS}
   except (KeyError,ValueError,TypeError):raise ValueError('화면 설정을 확인해주세요.')
   if not 8<=font<=60 or not 2<=padding<=60 or any(not 20<=v<=1200 for v in widths.values()):raise ValueError('열 너비 20px, 글자 8px, 여백 2px 이상으로 설정해주세요.')
-  display[key]={'font':font,'padding':padding,'widths':widths}
+  link_size=x.get('link_size',20)
+  if type(link_size)!=int or not 8<=link_size<=80:raise ValueError('링크 아이콘 크기는 8~80px로 설정해주세요.')
+  display[key]={'font':font,'padding':padding,'widths':widths,'link_size':link_size}
  if raw.get('picker') not in ('files','gallery'):raise ValueError('사진 선택 방식을 확인해주세요.')
  with connection() as c:
   c.execute('BEGIN IMMEDIATE');s=get_settings(c);platforms=raw.get('platforms',s['platforms'])
@@ -203,12 +208,14 @@ def settings():
   for p in [*s['platforms'],*platforms]:
    if p.casefold() not in seen:seen.add(p.casefold());merged.append(p)
   if len(merged)>200:raise ValueError('예약 플랫폼은 최대 200개까지 등록할 수 있습니다.')
+  detail_order=raw.get('detail_order',s['detail_order'])
+  if not isinstance(detail_order,list) or len(detail_order)!=len(DETAIL_FIELDS) or any(not isinstance(k,str) for k in detail_order) or set(detail_order)!=set(DETAIL_FIELDS):raise ValueError('상세 항목 순서를 확인해주세요.')
   kakao_key=raw.get('kakao_key',s['kakao_key'])
   if kakao_key!=s['kakao_key'] and not mobile['admin']():abort(403)
   if not isinstance(kakao_key,str) or (kakao_key and (len(kakao_key)!=32 or any(ch not in '0123456789abcdefABCDEF' for ch in kakao_key))):raise ValueError('카카오 JavaScript 키를 확인해주세요.')
   scroll_top=raw.get('scroll_top',s['scroll_top'])
   if scroll_top not in [side+'-'+pos for side in ('left','right') for pos in ('top','middle','bottom')]:raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
-  s.update(kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  s.update(detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():
