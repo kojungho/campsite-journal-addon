@@ -3,13 +3,14 @@ import io,json,os,sqlite3,uuid,zipfile
 from pathlib import Path
 from datetime import date
 from contextlib import contextmanager
-from flask import Flask,request,jsonify,abort,send_file
+from flask import Flask,request,jsonify,abort,send_file,Response,stream_with_context
 from PIL import Image,UnidentifiedImageError,ImageOps
 from pillow_heif import register_heif_opener
 register_heif_opener()
 from mobile_access import install_mobile,channel_app
 from address_search import search as search_address
 from campsite_search import search as search_campsites
+import live_sync
 
 DATA=Path(os.getenv('JOURNAL_DATA','./.local-data'));DATA.mkdir(parents=True,exist_ok=True)
 MEDIA=DATA/'photos';MEDIA.mkdir(exist_ok=True)
@@ -38,6 +39,7 @@ def guard():
 @app.after_request
 def headers(r):
  r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
+ if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400:live_sync.publish()
  r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self' https://t1.kakaocdn.net https://t1.daumcdn.net; connect-src 'self'; frame-src https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
@@ -79,6 +81,10 @@ def clean(raw):
    b[k]=v
  if (b['lat'] is None)!=(b['lng'] is None):raise ValueError('위도와 경도를 함께 입력해주세요.')
  return b
+@app.get('/api/live')
+def live():
+ return Response(stream_with_context(live_sync.events()),mimetype='text/event-stream',headers={'X-Accel-Buffering':'no','Cache-Control':'no-cache'})
+
 @app.get('/api/campsites')
 def campsites():
  body,status=search_campsites(request.args.get('q',''))
@@ -174,5 +180,5 @@ def backup():
 if __name__=='__main__':
  from waitress import serve
  import threading
- threading.Thread(target=lambda:serve(channel_app(app,'external'),host='0.0.0.0',port=8098),daemon=True).start()
- serve(channel_app(app,'ingress'),host=os.getenv('JOURNAL_HOST','0.0.0.0'),port=int(os.getenv('JOURNAL_PORT','8099')))
+ threading.Thread(target=lambda:serve(channel_app(app,'external'),host='0.0.0.0',port=8098,threads=32),daemon=True).start()
+ serve(channel_app(app,'ingress'),host=os.getenv('JOURNAL_HOST','0.0.0.0'),port=int(os.getenv('JOURNAL_PORT','8099')),threads=32)
