@@ -3,7 +3,8 @@ from pathlib import Path
 from PIL import Image
 sandbox=tempfile.TemporaryDirectory();os.environ['JOURNAL_DATA']=sandbox.name
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'campsite_journal'))
-from app import app,connection,DEFAULTS,FIELDS
+from app import app,connection,DEFAULTS,FIELDS,MEDIA
+from unittest.mock import patch
 from mobile_access import channel_app
 class JournalTest(unittest.TestCase):
  def setUp(self):
@@ -65,6 +66,36 @@ class JournalTest(unittest.TestCase):
   upgraded=self.client.get('/api/state').json['settings'];self.assertEqual(upgraded['order'].index('nights'),upgraded['order'].index('checkout')+1);self.assertEqual(upgraded['desktop']['widths']['nights'],123);self.assertFalse(upgraded['visible']['price'])
   self.assertEqual(self.client.put('/api/settings',json=old,headers=self.headers).status_code,200)
   ident=self.record(nights='999');record=self.client.get('/api/state').json['records'][0];self.assertEqual(record['id'],ident);self.assertNotIn('nights',record);self.assertEqual(record['checkout'],'2026-10-03')
+ def test_clone_copies_metadata_photos_and_memos_independently(self):
+  source=self.record(platform='캠핏',notes='원본 메모',lat=37,lng=128)
+  for kind in ('gallery','layout'):
+   image=io.BytesIO();Image.new('RGB',(10,10),'green').save(image,'PNG');image.seek(0)
+   self.client.post('/api/records/'+source+'/photos/'+kind,data={'photos':(image,kind+'.png')},headers=self.headers)
+  original=self.client.get('/api/state').json['records'][0]
+  for p in original['photos']:self.client.put('/api/photos/'+p['id'],json={'memo':'사진 메모 '+p['kind']},headers=self.headers)
+  original=self.client.get('/api/state').json['records'][0];payload={k:v for k,v in original.items() if k not in ('id','photos')};payload.update(clone_from=source,name='다음 방문',checkin='2026-11-01',checkout='2026-11-04')
+  response=self.client.post('/api/records',json=payload,headers=self.headers);self.assertEqual(response.status_code,201);newid=response.json['id'];records=self.client.get('/api/state').json['records'];clone=next(r for r in records if r['id']==newid)
+  self.assertEqual(next(r for r in records if r['id']==source),original);self.assertEqual(clone['name'],'다음 방문');self.assertEqual(clone['lat'],37);self.assertEqual(clone['platform'],'캠핏');self.assertEqual(clone['checkin'],'2026-11-01');self.assertEqual(len(clone['photos']),2)
+  for p in clone['photos']:
+   old=next(o for o in original['photos'] if o['kind']==p['kind']);self.assertNotEqual(p['id'],old['id']);self.assertEqual(p['memo'],old['memo']);self.assertEqual((MEDIA/(p['id']+'.jpg')).read_bytes(),(MEDIA/(old['id']+'.jpg')).read_bytes())
+  self.client.delete('/api/records/'+newid,headers=self.headers)
+  for p in original['photos']:self.assertTrue((MEDIA/(p['id']+'.jpg')).exists())
+ def test_clone_failure_rolls_back_record_and_files(self):
+  source=self.record();image=io.BytesIO();Image.new('RGB',(10,10),'red').save(image,'PNG');image.seek(0)
+  self.client.post('/api/records/'+source+'/photos/gallery',data={'photos':(image,'image.png')},headers=self.headers);files=set(MEDIA.iterdir())
+  with patch('app.shutil.copyfile',side_effect=OSError('test copy failure')),self.assertLogs(app.logger,level='ERROR'):
+   response=self.client.post('/api/records',json={'clone_from':source,'name':'복제'},headers=self.headers)
+  self.assertEqual(response.status_code,500);self.assertEqual(set(MEDIA.iterdir()),files);self.assertEqual(len(self.client.get('/api/state').json['records']),1)
+  self.assertEqual(self.client.post('/api/records',json={'clone_from':'missing','name':'복제'},headers=self.headers).status_code,400)
+ def test_bulk_delete_only_selected_records_and_photos(self):
+  first=self.record(name='선택 1');second=self.record(name='선택 2');keep=self.record(name='유지');photos={}
+  for ident in (first,second,keep):
+   image=io.BytesIO();Image.new('RGB',(10,10),'blue').save(image,'PNG');image.seek(0);self.client.post('/api/records/'+ident+'/photos/gallery',data={'photos':(image,'image.png')},headers=self.headers)
+  for record in self.client.get('/api/state').json['records']:photos[record['id']]=record['photos'][0]['id']
+  self.assertEqual(self.client.post('/api/records/bulk-delete',json={'ids':[first]}).status_code,403)
+  self.assertEqual(self.client.post('/api/records/bulk-delete',json={'ids':[]},headers=self.headers).status_code,400)
+  response=self.client.post('/api/records/bulk-delete',json={'ids':[first,first,second,'missing']},headers=self.headers);self.assertEqual(response.status_code,200);self.assertEqual(response.json['deleted'],2)
+  records=self.client.get('/api/state').json['records'];self.assertEqual([r['id'] for r in records],[keep]);self.assertFalse((MEDIA/(photos[first]+'.jpg')).exists());self.assertFalse((MEDIA/(photos[second]+'.jpg')).exists());self.assertTrue((MEDIA/(photos[keep]+'.jpg')).exists())
  def test_atomic_bad_upload(self):
   ident=self.record();r=self.client.post('/api/records/'+ident+'/photos/gallery',data={'photos':(io.BytesIO(b'not image'),'bad.jpg')},headers=self.headers);self.assertEqual(r.status_code,400)
   self.assertEqual(self.client.get('/api/state').json['records'][0]['photos'],[])

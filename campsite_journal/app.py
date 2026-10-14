@@ -1,5 +1,5 @@
 """Persistent campsite journal, HA Ingress and isolated paired-device listener."""
-import io,json,os,sqlite3,uuid,zipfile
+import io,json,os,shutil,sqlite3,uuid,zipfile
 from pathlib import Path
 from datetime import date
 from contextlib import contextmanager
@@ -117,9 +117,35 @@ def addresses():
 
 @app.post('/api/records')
 def create():
- b=clean(request.get_json());ident=str(uuid.uuid4())
- with connection() as c:c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(b,ensure_ascii=False)))
+ raw=request.get_json();b=clean(raw);ident=str(uuid.uuid4());source=raw.get('clone_from');staged=[]
+ if source is not None and (not isinstance(source,str) or len(source)>80):raise ValueError('복제할 원본 기록을 확인해주세요.')
+ try:
+  with connection() as c:
+   c.execute('BEGIN IMMEDIATE')
+   if source and not c.execute('SELECT 1 FROM records WHERE id=?',(source,)).fetchone():raise ValueError('원본 기록이 삭제되어 복제할 수 없습니다.')
+   c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(b,ensure_ascii=False)))
+   if source:
+    for photo in c.execute('SELECT * FROM photos WHERE record_id=?',(source,)).fetchall():
+     pid=str(uuid.uuid4());path=MEDIA/(pid+'.jpg');staged.append(path);shutil.copyfile(MEDIA/(photo['id']+'.jpg'),path)
+     c.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',(pid,ident,photo['kind'],photo['name'],photo['memo']))
+ except Exception:
+  for path in staged:path.unlink(missing_ok=True)
+  raise
  return jsonify(id=ident),201
+@app.post('/api/records/bulk-delete')
+def bulk_delete():
+ raw=request.get_json();ids=raw.get('ids') if isinstance(raw,dict) else None
+ if not isinstance(ids,list) or not 1<=len(ids)<=10000 or any(not isinstance(ident,str) or not ident or len(ident)>80 for ident in ids):raise ValueError('삭제할 기록을 선택해주세요.')
+ ids=list(dict.fromkeys(ids));names=[];found=[]
+ with connection() as c:
+  c.execute('BEGIN IMMEDIATE')
+  for start in range(0,len(ids),500):
+   chunk=ids[start:start+500];marks=','.join('?' for _ in chunk)
+   found.extend(row[0] for row in c.execute('SELECT id FROM records WHERE id IN ('+marks+')',chunk))
+   names.extend(row[0] for row in c.execute('SELECT id FROM photos WHERE record_id IN ('+marks+')',chunk))
+  c.executemany('DELETE FROM records WHERE id=?',[(ident,) for ident in found])
+ for name in names:(MEDIA/(name+'.jpg')).unlink(missing_ok=True)
+ return jsonify(ok=True,deleted=len(found))
 @app.put('/api/records/<ident>')
 def update(ident):
  b=clean(request.get_json())
