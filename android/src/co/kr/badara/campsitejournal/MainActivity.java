@@ -121,7 +121,7 @@ public class MainActivity extends Activity {
         CookieManager cookies=CookieManager.getInstance();cookies.setAcceptCookie(true);cookies.setAcceptThirdPartyCookies(web,false);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
-                Uri uri=request.getUrl();if("https".equals(uri.getScheme())&&"ha.badara.co.kr".equals(uri.getHost())&&uri.getPath().startsWith("/campsite-journal/"))return false;
+                Uri uri=request.getUrl();if(!request.isForMainFrame()){return !("https".equals(uri.getScheme())&&( "postcode.map.kakao.com".equals(uri.getHost())||"postcode.map.daum.net".equals(uri.getHost())||"www.openstreetmap.org".equals(uri.getHost()))); }if("https".equals(uri.getScheme())&&"ha.badara.co.kr".equals(uri.getHost())&&uri.getPath().startsWith("/campsite-journal/"))return false;
                 try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}return true;
             }
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())Toast.makeText(MainActivity.this,"기록에 연결하지 못했습니다. 인터넷 연결을 확인해주세요.",Toast.LENGTH_LONG).show();}

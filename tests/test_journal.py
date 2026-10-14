@@ -24,7 +24,7 @@ class JournalTest(unittest.TestCase):
    r=self.client.post('/api/records/'+ident+'/photos/'+kind,data={'photos':(image,'picture.png')},headers=self.headers)
    self.assertEqual(r.status_code,200)
   r=self.client.get('/api/state').json['records'][0];self.assertEqual(len(r['photos']),2)
-  photo=r['photos'][0]['id'];self.assertEqual(self.client.get('/photos/'+photo).status_code,200)
+  photo=r['photos'][0]['id'];response=self.client.get('/photos/'+photo);self.assertEqual(response.status_code,200);response.close()
   self.assertEqual(self.client.delete('/api/photos/'+photo,headers=self.headers).status_code,200);self.assertEqual(self.client.get('/photos/'+photo).status_code,404)
   self.client.delete('/api/records/'+ident,headers=self.headers)
   self.assertEqual(self.client.get('/api/state').json['records'],[])

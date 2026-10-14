@@ -37,7 +37,7 @@ def guard():
 @app.after_request
 def headers(r):
  r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
- r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src https://www.openstreetmap.org; base-uri 'self'; form-action 'self'"
+ r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self' https://t1.kakaocdn.net https://t1.daumcdn.net; connect-src 'self'; frame-src https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
 def invalid(e):return jsonify(error=str(e)),400

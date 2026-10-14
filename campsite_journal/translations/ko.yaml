@@ -1,7 +1,0 @@
-configuration:
-  naver_client_id:
-    name: 네이버 Maps Client ID
-    description: 네이버 클라우드 Maps에서 Geocoding을 선택한 Application의 Client ID
-  naver_client_secret:
-    name: 네이버 Maps Client Secret
-    description: 같은 Application의 Client Secret. 주소 검색 인증키는 서버에서만 사용합니다.
