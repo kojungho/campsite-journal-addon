@@ -27,6 +27,7 @@ jobs:
       - run: node --check campsite_journal/static/campsite-finder.js
       - run: node --check campsite_journal/static/live-sync.js
       - run: node tests/test_stay_picker.cjs
+      - run: node tests/test_list.cjs
   build:
     needs: test
     strategy:
