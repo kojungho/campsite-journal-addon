@@ -1,5 +1,7 @@
 # 캠핑 노트
 
+> 단일 애드온 통합 이후 개발·배포는 [camp-ledger-addon](https://github.com/kojungho/camp-ledger-addon)에서 이어갑니다. 캠핑장 기록은 새 저장소의 `camp_ledger/journal`에 포함됩니다. 이 저장소의 독립 애드온을 다시 설치하거나 배포하지 마세요. 기존 앱 주소·서명은 유지됩니다. [통합·이전 안내](https://github.com/kojungho/camp-ledger-addon/blob/main/INTEGRATION.md)
+
 Home Assistant에서 방문한 캠핑장을 남기고, 안드로이드 앱과 아이폰 홈 화면 웹앱에서도 같은 기록을 열어봅니다.
 
 ## Home Assistant 설치
