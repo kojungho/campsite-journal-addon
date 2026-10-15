@@ -31,6 +31,11 @@ jobs:
       - run: node --check campsite_journal/static/table-scroll.js
       - run: node tests/test_table_scroll.cjs
       - run: node tests/test_record_actions.cjs
+      - run: node --check campsite_journal/static/media-editor.js
+      - run: node --check campsite_journal/static/hub.js
+      - run: node --check campsite_journal/static/companion.js
+      - run: node tests/test_media_editor.cjs
+      - run: node tests/test_hub.cjs
       - run: node --check campsite_journal/static/app.js
       - run: node --check campsite_journal/static/connect.js
       - run: node --check campsite_journal/static/stay-picker.js

@@ -49,12 +49,15 @@ public class MainActivity extends Activity {
     private WebView web;
     private ValueCallback<Uri[]> chooser;
     private volatile String requestedPhotoPickerMode;
-    private volatile boolean editing=false;
+    private volatile boolean editing=false,journalEditing=false,ledgerEditing=false;
     private boolean chooserPhotos=false;
     private AppUpdater updater;
     public final class PhotoPickerBridge {
+        private final boolean ledger;
+        PhotoPickerBridge(boolean ledger){this.ledger=ledger;}
         @JavascriptInterface public void preparePhotoPicker(String mode) {requestedPhotoPickerMode="gallery".equals(mode)?"gallery":"files";}
-        @JavascriptInterface public void setEditing(boolean value){editing=value;if(!value&&updater!=null)runOnUiThread(()->updater.maybeInstall());}
+        @JavascriptInterface public void setEditing(boolean value){if(ledger)ledgerEditing=value;else journalEditing=value;editing=journalEditing||ledgerEditing;if(!editing&&updater!=null)runOnUiThread(()->updater.maybeInstall());}
+        @JavascriptInterface public void flushCookies(){CookieManager.getInstance().flush();}
         @JavascriptInterface public String getVersion() {return appVersion();}
     }
     private String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "";}}
@@ -118,11 +121,12 @@ public class MainActivity extends Activity {
         });
         WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);settings.setGeolocationEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setSafeBrowsingEnabled(true);
         settings.setUserAgentString(settings.getUserAgentString()+" CampsiteJournalAndroid/"+appVersion());
-        web.addJavascriptInterface(new PhotoPickerBridge(),"CampsiteJournalNative");
+        web.addJavascriptInterface(new PhotoPickerBridge(false),"CampsiteJournalNative");
+        web.addJavascriptInterface(new PhotoPickerBridge(true),"CampLedgerNative");
         CookieManager cookies=CookieManager.getInstance();cookies.setAcceptCookie(true);cookies.setAcceptThirdPartyCookies(web,false);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
-                Uri uri=request.getUrl();if(!request.isForMainFrame()){return !("https".equals(uri.getScheme())&&( "postcode.map.kakao.com".equals(uri.getHost())||"postcode.map.daum.net".equals(uri.getHost())||"www.openstreetmap.org".equals(uri.getHost()))); }if("https".equals(uri.getScheme())&&"ha.badara.co.kr".equals(uri.getHost())&&uri.getPath().startsWith("/campsite-journal/"))return false;
+                Uri uri=request.getUrl();if(!request.isForMainFrame()){return !("https".equals(uri.getScheme())&&(("ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))||"postcode.map.kakao.com".equals(uri.getHost())||"postcode.map.daum.net".equals(uri.getHost())||"www.openstreetmap.org".equals(uri.getHost()))); }if("https".equals(uri.getScheme())&&"ha.badara.co.kr".equals(uri.getHost())&&(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))return false;
                 try{startActivity(new Intent(Intent.ACTION_VIEW,uri));}catch(Exception ignored){}return true;
             }
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())Toast.makeText(MainActivity.this,"기록에 연결하지 못했습니다. 인터넷 연결을 확인해주세요.",Toast.LENGTH_LONG).show();}
@@ -137,11 +141,11 @@ public class MainActivity extends Activity {
             }
         });
         web.setDownloadListener((url,agent,disposition,mime,length)->{
-            Uri uri=Uri.parse(url);if(!"https".equals(uri.getScheme())||!"ha.badara.co.kr".equals(uri.getHost())||!uri.getPath().startsWith("/campsite-journal/"))return;
+            Uri uri=Uri.parse(url);if(!"https".equals(uri.getScheme())||!"ha.badara.co.kr".equals(uri.getHost())||!(uri.getPath().startsWith("/campsite-journal/")||uri.getPath().startsWith("/camp-ledger/")))return;
             try{DownloadManager.Request download=new DownloadManager.Request(uri);download.addRequestHeader("Cookie",CookieManager.getInstance().getCookie(url));download.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);download.setMimeType(mime);String name=android.webkit.URLUtil.guessFileName(url,disposition,mime);download.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,name);((DownloadManager)getSystemService(Context.DOWNLOAD_SERVICE)).enqueue(download);Toast.makeText(this,"다운로드를 시작했습니다.",Toast.LENGTH_SHORT).show();}catch(Exception e){Toast.makeText(this,"다운로드하지 못했습니다.",Toast.LENGTH_LONG).show();}
         });
         setContentView(web);
-        cookies.setCookie(BASE,"campsite_device="+key+"; Path=/campsite-journal/; Max-Age=157680000; Secure; HttpOnly; SameSite=Strict",value->{cookies.flush();web.loadUrl(BASE);});
+        cookies.setCookie(BASE,"campsite_device="+key+"; Path=/campsite-journal/; Max-Age=157680000; Secure; HttpOnly; SameSite=Strict",value->{cookies.flush();web.loadUrl(BASE+"hub");});
     }
     private void openChooser(WebChromeClient.FileChooserParams params,boolean gallery,boolean image) {
         boolean multiple=params.getMode()==WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;

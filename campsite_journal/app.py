@@ -54,7 +54,7 @@ def guard():
 def headers(r):
  r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
  if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400:live_sync.publish()
- r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net https://*.daum.net; frame-src https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
+ r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net https://*.daum.net; frame-src 'self' https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
 def invalid(e):return jsonify(error=str(e)),400
@@ -64,6 +64,8 @@ def too_large(e):return jsonify(error='한 번에 64MB 이하로 첨부해주세
 def index():
  html=(Path(app.static_folder)/'index.html').read_text().replace('__APP_VERSION__',os.getenv('JOURNAL_VERSION','1.0.0'))
  return Response(html,mimetype='text/html')
+@app.get('/hub')
+def hub():return app.send_static_file('hub.html')
 @app.get('/api/state')
 def state():
  with connection() as c:
@@ -173,6 +175,60 @@ def resolve_position(ident):
   if body.get('lat') is None or body.get('lng') is None:
    body.update(lat=checked['lat'],lng=checked['lng']);c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),ident))
   return jsonify(lat=body['lat'],lng=body['lng'])
+def image_content(file):
+ try:
+  with Image.open(file.stream) as im:
+   if im.format not in ('JPEG','PNG','WEBP','GIF','HEIF','HEIC'):raise ValueError('JPG, PNG, WebP, GIF 사진을 선택해주세요.')
+   im.load();im=ImageOps.exif_transpose(im).convert('RGB');im.thumbnail((3200,3200));buf=io.BytesIO();im.save(buf,'JPEG',quality=90);return buf.getvalue()
+ except (UnidentifiedImageError,OSError,Image.DecompressionBombError):raise ValueError('사진을 읽을 수 없습니다. HEIC 사진은 JPG로 변환해주세요.')
+@app.post('/api/records/save')
+def save_with_photos():
+ try:raw=json.loads(request.form.get('record','null'))
+ except (ValueError,TypeError):raise ValueError('저장할 기록을 확인해주세요.')
+ if not isinstance(raw,dict):raise ValueError('저장할 기록을 확인해주세요.')
+ body=clean(raw.get('fields'));ident=raw.get('id');source=raw.get('clone_from');keep=raw.get('keep',[]);uploads=raw.get('uploads',[]);remove=raw.get('remove',[])
+ if any(v is not None and (not isinstance(v,str) or not v or len(v)>80) for v in (ident,source)) or ident and source:raise ValueError('저장할 기록을 확인해주세요.')
+ if not isinstance(keep,list) or not isinstance(uploads,list) or len(keep)+len(uploads)>2000:raise ValueError('사진 목록을 확인해주세요.')
+ def memo(item):
+  if not isinstance(item,dict) or not isinstance(item.get('memo',''),str) or len(item.get('memo',''))>2000:raise ValueError('사진 메모는 2000자 이하로 입력해주세요.')
+  return item.get('memo','')
+ if not isinstance(remove,list) or any(not isinstance(pid,str) for pid in remove) or len(remove)>2000:raise ValueError('삭제할 사진 목록을 확인해주세요.')
+ keep_values={};memo_changed=set()
+ for item in keep:
+  text=memo(item);pid=item.get('id')
+  if not isinstance(pid,str) or not pid or pid in keep_values:raise ValueError('사진 목록을 확인해주세요.')
+  keep_values[pid]=text
+  if item.get('changed',True):memo_changed.add(pid)
+ staged=[];fields=set()
+ for item in uploads:
+  text=memo(item);field=item.get('field');kind=item.get('kind')
+  if not isinstance(field,str) or field in fields or kind not in ('gallery','layout') or field not in request.files:raise ValueError('첨부 사진을 확인해주세요.')
+  fields.add(field);file=request.files[field];staged.append((str(uuid.uuid4()),kind,Path(file.filename or '사진').name,image_content(file),text))
+ target=ident or str(uuid.uuid4());written=[];removed=[]
+ try:
+  with connection() as c:
+   c.execute('BEGIN IMMEDIATE');owner=ident or source
+   if owner and not c.execute('SELECT 1 FROM records WHERE id=?',(owner,)).fetchone():raise ValueError('기록이 삭제되어 저장할 수 없습니다.')
+   existing={p['id']:dict(p) for p in c.execute('SELECT * FROM photos WHERE record_id=?',(owner,))} if owner else {}
+   if not set(keep_values)<=set(existing) or not set(remove)<=set(existing) or set(remove)&set(keep_values) or remove and not ident:raise ValueError('현재 기록에 속한 사진만 저장할 수 있습니다.')
+   if ident:c.execute('UPDATE records SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),target))
+   else:c.execute('INSERT INTO records VALUES(?,?)',(target,json.dumps(body,ensure_ascii=False)))
+   if ident:
+    removed=list(set(remove))
+    c.executemany('DELETE FROM photos WHERE id=?',[(pid,) for pid in removed])
+    c.executemany('UPDATE photos SET memo=? WHERE id=?',[(text,pid) for pid,text in keep_values.items() if pid in memo_changed])
+   elif source:
+    for pid,text in keep_values.items():
+     photo=existing[pid];newid=str(uuid.uuid4());path=MEDIA/(newid+'.jpg');written.append(path);shutil.copyfile(MEDIA/(pid+'.jpg'),path)
+     c.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',(newid,target,photo['kind'],photo['name'],text))
+   for pid,kind,name,content,text in staged:
+    path=MEDIA/(pid+'.jpg');written.append(path);path.write_bytes(content)
+    c.execute('INSERT INTO photos(id,record_id,kind,name,memo) VALUES(?,?,?,?,?)',(pid,target,kind,name,text))
+ except Exception:
+  for path in written:path.unlink(missing_ok=True)
+  raise
+ for pid in removed:(MEDIA/(pid+'.jpg')).unlink(missing_ok=True)
+ return jsonify(id=target),200 if ident else 201
 @app.post('/api/records/<ident>/photos/<kind>')
 def upload(ident,kind):
  if kind not in ('gallery','layout'):abort(400)
@@ -182,12 +238,8 @@ def upload(ident,kind):
   if not files:raise ValueError('사진을 선택해주세요.')
   for f in files:
    ident_photo=str(uuid.uuid4())
-   try:
-    with Image.open(f.stream) as im:
-     if im.format not in ('JPEG','PNG','WEBP','GIF','HEIF','HEIC'):raise ValueError('JPG, PNG, WebP, GIF 사진을 선택해주세요.')
-     im.load();im=ImageOps.exif_transpose(im).convert('RGB');im.thumbnail((3200,3200));buf=io.BytesIO();im.save(buf,'JPEG',quality=90)
-   except (UnidentifiedImageError,OSError,Image.DecompressionBombError):raise ValueError('사진을 읽을 수 없습니다. HEIC 사진은 JPG로 변환해주세요.')
-   staged.append((ident_photo,Path(f.filename or '사진').name,buf.getvalue()))
+   content=image_content(f)
+   staged.append((ident_photo,Path(f.filename or '사진').name,content))
   with connection() as c:
    if not c.execute('SELECT 1 FROM records WHERE id=?',(ident,)).fetchone():abort(404)
    for pid,name,content in staged:
