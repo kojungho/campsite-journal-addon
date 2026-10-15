@@ -41,7 +41,7 @@ def upgrade_columns(settings):
    widths=settings.setdefault(mode,{}).setdefault('widths',{});widths.setdefault('nights',widths.get('checkout',100))
  return settings
 def get_settings(c):
- s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS))
+ s=upgrade_columns(json.loads(c.execute('SELECT body FROM settings WHERE id=1').fetchone()[0]));s.setdefault('platforms',list(DEFAULT_PLATFORMS));s.setdefault('scroll_top','right-bottom');s.setdefault('kakao_key','');s.setdefault('detail_order',list(DETAIL_FIELDS));s.setdefault('field_labels',{})
  for mode in ('desktop','display_mobile'):s[mode].setdefault('link_size',20)
  return s
 mobile=install_mobile(app,connection,get_settings,DATA)
@@ -53,7 +53,7 @@ def guard():
 @app.after_request
 def headers(r):
  r.headers['X-Content-Type-Options']='nosniff';r.headers['Referrer-Policy']='strict-origin-when-cross-origin';r.headers['Cache-Control']='no-store' if request.path.startswith('/api/') else 'no-cache'
- if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400:live_sync.publish()
+ if request.method in ('POST','PUT','DELETE') and request.path.startswith('/api/') and r.status_code<400 and request.path!='/api/import/preview':live_sync.publish()
  r.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; style-src 'self' 'unsafe-inline'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net https://*.daum.net https://*.kakaocdn.net; connect-src 'self' https://*.kakao.com https://*.daumcdn.net https://*.daum.net; frame-src 'self' https://www.openstreetmap.org https://postcode.map.kakao.com https://postcode.map.daum.net; base-uri 'self'; form-action 'self'"
  return r
 @app.errorhandler(ValueError)
@@ -266,6 +266,29 @@ def remove_photo(pid):
   if not c.execute('DELETE FROM photos WHERE id=?',(pid,)).rowcount:abort(404)
  (MEDIA/(pid+'.jpg')).unlink(missing_ok=True)
  return jsonify(ok=True)
+@app.post('/api/import/preview')
+def import_preview():
+ from reservation_import import image_text,parse_reservations,identity
+ file=request.files.get('image')
+ text=image_text(file) if file else str((request.get_json(silent=True) or {}).get('text',''))[:50000]
+ with connection() as c:existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
+ rows=parse_reservations(text)
+ return jsonify(text=text,records=[{**row,'duplicate':identity(row) in existing} for row in rows])
+@app.post('/api/import/commit')
+def import_commit():
+ from reservation_import import identity
+ raw=request.get_json(silent=True) or {};rows=raw.get('records')
+ if not isinstance(rows,list) or not 1<=len(rows)<=100 or any(not isinstance(row,dict) for row in rows):raise ValueError('추가할 예약은 1~100개로 선택해주세요.')
+ bodies=[clean(row) for row in rows]
+ if any(not b.get('checkin') or not b.get('checkout') for b in bodies):raise ValueError('사진 가져오기는 입실일과 퇴실일이 필요합니다.')
+ added=[];skipped=0
+ with connection() as c:
+  c.execute('BEGIN IMMEDIATE');existing={identity(json.loads(row['body'])) for row in c.execute('SELECT body FROM records')}
+  for body in bodies:
+   key=identity(body)
+   if key in existing:skipped+=1;continue
+   ident=uuid.uuid4().hex;c.execute('INSERT INTO records VALUES(?,?)',(ident,json.dumps(body,ensure_ascii=False)));existing.add(key);added.append(ident)
+ return jsonify(added=added,skipped=skipped)
 @app.put('/api/settings')
 def settings():
  raw=request.get_json()
@@ -313,7 +336,10 @@ def settings():
   if not isinstance(kakao_key,str) or (kakao_key and (len(kakao_key)!=32 or any(ch not in '0123456789abcdefABCDEF' for ch in kakao_key))):raise ValueError('카카오 JavaScript 키를 확인해주세요.')
   scroll_top=raw.get('scroll_top',s['scroll_top'])
   if scroll_top not in [side+'-'+pos for side in ('left','right') for pos in ('top','middle','bottom')]:raise ValueError('맨 위로 버튼 위치를 확인해주세요.')
-  s.update(platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
+  field_labels=raw.get('field_labels',s['field_labels'])
+  if not isinstance(field_labels,dict) or any(k not in FIELDS or not isinstance(v,str) or not v.strip() or len(v)>40 for k,v in field_labels.items()):raise ValueError('항목 이름은 1~40자로 입력해주세요.')
+  field_labels={k:v.strip() for k,v in field_labels.items()}
+  s.update(field_labels=field_labels,platform_deleted=sorted(deleted),detail_order=detail_order,kakao_key=kakao_key,scroll_top=scroll_top,platforms=merged,order=order,visible=visible,picker=raw['picker'],**display);c.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(s,ensure_ascii=False),))
  return jsonify(ok=True)
 @app.get('/api/backup')
 def backup():

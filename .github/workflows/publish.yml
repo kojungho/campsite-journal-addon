@@ -36,6 +36,8 @@ jobs:
       - run: node --check campsite_journal/static/companion.js
       - run: node tests/test_media_editor.cjs
       - run: node tests/test_hub.cjs
+      - run: node tests/test_mobile_cards.cjs
+      - run: node --check campsite_journal/static/reservation-import.js
       - run: node --check campsite_journal/static/app.js
       - run: node --check campsite_journal/static/connect.js
       - run: node --check campsite_journal/static/stay-picker.js
